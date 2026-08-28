@@ -127,13 +127,11 @@ pub fn linkBSD(_: *std.Build, mod: *std.Build.Module) void {
 }
 
 pub fn linkMacOS(b: *std.Build, mod: *std.Build.Module) void {
-    // Include xcode_frameworks for cross compilation
-    if (b.lazyDependency("xcode_frameworks", .{})) |dep| {
-        mod.addSystemFrameworkPath(dep.path("Frameworks"));
-        mod.addSystemIncludePath(dep.path("include"));
-        mod.addLibraryPath(dep.path("lib"));
+    if (b.sysroot) |sysroot| {
+        mod.addSystemFrameworkPath(.{ .cwd_relative = b.pathJoin(&.{ sysroot, "System/Library/Frameworks" }) });
+        mod.addSystemIncludePath(.{ .cwd_relative = b.pathJoin(&.{ sysroot, "usr/include" }) });
+        mod.addLibraryPath(.{ .cwd_relative = b.pathJoin(&.{ sysroot, "usr/lib" }) });
     }
-
     mod.linkFramework("Foundation", .{});
     mod.linkFramework("CoreServices", .{});
     mod.linkFramework("CoreGraphics", .{});
