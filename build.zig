@@ -127,13 +127,11 @@ pub fn linkBSD(_: *std.Build, mod: *std.Build.Module) void {
 }
 
 pub fn linkMacOS(b: *std.Build, mod: *std.Build.Module) void {
-    // Include xcode_frameworks for cross compilation
-    if (b.lazyDependency("xcode_frameworks", .{})) |dep| {
-        mod.addSystemFrameworkPath(dep.path("Frameworks"));
-        mod.addSystemIncludePath(dep.path("include"));
-        mod.addLibraryPath(dep.path("lib"));
+    if (b.sysroot) |sysroot| {
+        mod.addSystemFrameworkPath(.{ .cwd_relative = b.pathJoin(&.{ sysroot, "System/Library/Frameworks" }) });
+        mod.addSystemIncludePath(.{ .cwd_relative = b.pathJoin(&.{ sysroot, "usr/include" }) });
+        mod.addLibraryPath(.{ .cwd_relative = b.pathJoin(&.{ sysroot, "usr/lib" }) });
     }
-
     mod.linkFramework("Foundation", .{});
     mod.linkFramework("CoreServices", .{});
     mod.linkFramework("CoreGraphics", .{});
@@ -627,130 +625,11 @@ pub fn build(b: *std.Build) !void {
         addRaygui(b, target, optimize, lib);
     }
 
-    const examples = b.step("examples", "build/install all examples");
-    examples.dependOn(try addExamples("core", b, target, optimize, lib, options.platform));
-    examples.dependOn(try addExamples("audio", b, target, optimize, lib, options.platform));
-    examples.dependOn(try addExamples("models", b, target, optimize, lib, options.platform));
-    examples.dependOn(try addExamples("shaders", b, target, optimize, lib, options.platform));
-    examples.dependOn(try addExamples("shapes", b, target, optimize, lib, options.platform));
-    examples.dependOn(try addExamples("text", b, target, optimize, lib, options.platform));
-    examples.dependOn(try addExamples("textures", b, target, optimize, lib, options.platform));
-    examples.dependOn(try addExamples("others", b, target, optimize, lib, options.platform));
-}
-
-fn addExamples(
-    comptime module: []const u8,
-    b: *std.Build,
-    target: std.Build.ResolvedTarget,
-    optimize: std.builtin.OptimizeMode,
-    raylib: *std.Build.Step.Compile,
-    platform: PlatformBackend,
-) !*std.Build.Step {
-    const all = b.step(module, "All " ++ module ++ " examples");
-    const module_subpath = b.pathJoin(&.{ "examples", module });
-
-    var dir = try b.build_root.handle.openDir(b.graph.io, module_subpath, .{ .iterate = true });
-    defer dir.close(b.graph.io);
-
-    var iter = dir.iterate();
-    while (try iter.next(b.graph.io)) |entry| {
-        if (entry.kind != .file) continue;
-
-        const filetype = std.fs.path.extension(entry.name);
-        if (!std.mem.eql(u8, filetype, ".c")) continue;
-
-        const filename = std.fs.path.stem(entry.name);
-        const path = b.pathJoin(&.{ module_subpath, entry.name });
-
-        const exe_mod = b.createModule(.{
-            .target = target,
-            .optimize = optimize,
-            .link_libc = true,
-        });
-        exe_mod.addCSourceFile(.{ .file = b.path(path) });
-        exe_mod.linkLibrary(raylib);
-
-        if (platform == .sdl) {
-            exe_mod.linkSystemLibrary("SDL2", .{});
-            exe_mod.linkSystemLibrary("SDL3", .{});
-        }
-        if (platform == .sdl2) {
-            exe_mod.linkSystemLibrary("SDL2", .{});
-        }
-        if (platform == .sdl3) {
-            exe_mod.linkSystemLibrary("SDL3", .{});
-        }
-
-        if (std.mem.eql(u8, filename, "rlgl_standalone")) {
-            if (platform != .glfw) continue;
-            exe_mod.addIncludePath(b.path("src"));
-            exe_mod.addIncludePath(b.path("src/external/glfw/include"));
-        }
-        if (std.mem.eql(u8, filename, "raylib_opengl_interop")) {
-            if (platform == .drm) continue;
-            if (target.result.os.tag == .macos) continue;
-            exe_mod.addIncludePath(b.path("src/external"));
-        }
-
-        const run_step = b.step(filename, filename);
-
-        // web exports are completely separate
-        if (target.query.os_tag == .emscripten) {
-            exe_mod.addCMacro("PLATFORM_WEB", "");
-
-            const wasm = b.addLibrary(.{
-                .name = filename,
-                .root_module = exe_mod,
-            });
-
-            const install_dir: std.Build.InstallDir = .{ .custom = b.fmt("web/{s}/{s}", .{ module, filename }) };
-            const emcc_flags = emsdk.emccDefaultFlags(b.allocator, .{ .optimize = optimize });
-            const emcc_settings = emsdk.emccDefaultSettings(b.allocator, .{ .optimize = optimize });
-
-            const EmccExamplesPreloadMap = std.static_string_map.StaticStringMap([]const emsdk.zemscripten.EmccFilePath);
-            const EmccExamplesPreloadKV = struct { []const u8, []const emsdk.zemscripten.EmccFilePath };
-            const emcc_examples_preloads: []const EmccExamplesPreloadKV = @import("examples/example_resources.zon");
-            const emcc_examples_preloads_map = EmccExamplesPreloadMap.initComptime(emcc_examples_preloads);
-
-            const emcc_step = emsdk.emccStep(b, raylib, wasm, .{
-                .optimize = optimize,
-                .flags = emcc_flags,
-                .settings = emcc_settings,
-                .preload_paths = emcc_examples_preloads_map.get(filename) orelse &.{},
-                .shell_file_path = b.path("src/shell.html"),
-                .install_dir = install_dir,
-            });
-
-            const html_filename = try std.fmt.allocPrint(b.allocator, "{s}.html", .{wasm.name});
-            const emrun_step = emsdk.emrunStep(
-                b,
-                b.getInstallPath(install_dir, html_filename),
-                &.{},
-            );
-
-            emrun_step.dependOn(emcc_step);
-            run_step.dependOn(emrun_step);
-            all.dependOn(emcc_step);
-        } else {
-            exe_mod.addCMacro("PLATFORM_DESKTOP", "");
-
-            const exe = b.addExecutable(.{
-                .name = filename,
-                .root_module = exe_mod,
-                .use_lld = target.result.os.tag == .windows,
-            });
-
-            const install_cmd = b.addInstallArtifact(exe, .{ .dest_sub_path = b.fmt("{s}/{s}", .{ module, filename }) });
-
-            const run_cmd = b.addRunArtifact(exe);
-            run_cmd.cwd = b.path(module_subpath);
-            run_cmd.step.dependOn(&install_cmd.step);
-
-            run_step.dependOn(&run_cmd.step);
-            all.dependOn(&install_cmd.step);
-        }
-    }
-    return all;
+    // ponytail: dvui only consumes the compiled lib/translated C modules,
+    // never raylib's own example programs, and this lean fork doesn't keep
+    // every examples/* subdir around — so the upstream "examples" step
+    // (and its dir-listing code) is dropped rather than patched to cope
+    // with missing subdirs.
 }
 
 fn waylandGenerate(
