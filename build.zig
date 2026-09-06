@@ -169,6 +169,7 @@ pub fn linkMacOS(b: *std.Build, mod: *std.Build.Module) void {
     mod.linkFramework("CoreGraphics", .{});
     mod.linkFramework("AppKit", .{});
     mod.linkFramework("IOKit", .{});
+    mod.linkFramework("QuartzCore", .{});
 }
 
 fn compileRaylib(b: *std.Build, target: std.Build.ResolvedTarget, optimize: std.builtin.OptimizeMode, options: Options) !*std.Build.Step.Compile {
@@ -736,14 +737,19 @@ fn addExamples(
             const emcc_flags = emsdk.emccDefaultFlags(b.allocator, .{ .optimize = optimize });
             const emcc_settings = emsdk.emccDefaultSettings(b.allocator, .{ .optimize = optimize });
 
+            const EmccExamplesPreloadMap = std.static_string_map.StaticStringMap([]const emsdk.zemscripten.EmccFilePath);
+            const EmccExamplesPreloadKV = struct { []const u8, []const emsdk.zemscripten.EmccFilePath };
+            const emcc_examples_preloads: []const EmccExamplesPreloadKV = @import("examples/example_resources.zon");
+            const emcc_examples_preloads_map = EmccExamplesPreloadMap.initComptime(emcc_examples_preloads);
+
             const emcc_step = emsdk.emccStep(b, raylib, wasm, .{
                 .optimize = optimize,
                 .flags = emcc_flags,
                 .settings = emcc_settings,
+                .preload_paths = emcc_examples_preloads_map.get(filename) orelse &.{},
                 .shell_file_path = b.path("src/shell.html"),
                 .install_dir = install_dir,
             });
-            b.getInstallStep().dependOn(emcc_step);
 
             const html_filename = try std.fmt.allocPrint(b.allocator, "{s}.html", .{wasm.name});
             const emrun_step = emsdk.emrunStep(
@@ -763,7 +769,6 @@ fn addExamples(
                 .root_module = exe_mod,
                 .use_lld = target.result.os.tag == .windows,
             });
-            b.installArtifact(exe);
 
             const install_cmd = b.addInstallArtifact(exe, .{ .dest_sub_path = b.fmt("{s}/{s}", .{ module, filename }) });
 
@@ -818,3 +823,4 @@ fn waylandGenerate(
         }
     }
 }
+

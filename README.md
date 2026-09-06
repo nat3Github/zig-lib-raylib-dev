@@ -14,7 +14,7 @@ Ready to learn? Jump to [code examples!](https://www.raylib.com/examples.html)
 
 [![GitHub Releases Downloads](https://img.shields.io/github/downloads/raysan5/raylib/total)](https://github.com/raysan5/raylib/releases)
 [![GitHub Stars](https://img.shields.io/github/stars/raysan5/raylib?style=flat&label=stars)](https://github.com/raysan5/raylib/stargazers)
-[![GitHub commits since tagged version](https://img.shields.io/github/commits-since/raysan5/raylib/5.5)](https://github.com/raysan5/raylib/commits/master)
+[![GitHub commits since tagged version](https://img.shields.io/github/commits-since/raysan5/raylib/6.0)](https://github.com/raysan5/raylib/commits/master)
 [![GitHub Sponsors](https://img.shields.io/github/sponsors/raysan5?label=sponsors)](https://github.com/sponsors/raysan5)
 [![Packaging Status](https://repology.org/badge/tiny-repos/raylib.svg)](https://repology.org/project/raylib/versions)
 [![License](https://img.shields.io/badge/license-zlib%2Flibpng-blue.svg)](LICENSE)
@@ -53,6 +53,17 @@ features
   - Huge examples collection with [+140 code examples](https://github.com/raysan5/raylib/tree/master/examples)!
   - Bindings to [+70 programming languages](https://github.com/raysan5/raylib/blob/master/BINDINGS.md)!
   - **Free and open source**
+
+limitations
+-----------
+
+raylib presents some limitation by design for code simplicity, some forks, alternatives and samples are available to overcome most of them but it's up to the users to modify the library for their specific needs.
+
+  - Single window with single OpenGL context by default, no multi-window support
+  - Window resize and move stops the rendering loop on platforms supporting a window
+  - `RenderTextures` are flipped vertically, as provided by OpenGL, it's up to user to draw then flipped to screen
+  - Font rasterization has lower quality than alternatives using `Freetype2`, `HarfBuzz` or `Slug`
+  - Text drawing does not support RTL, ligatures or emojis
 
 basic example
 --------------
