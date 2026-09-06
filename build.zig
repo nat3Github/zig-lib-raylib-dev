@@ -101,24 +101,56 @@ fn findWaylandScanner(b: *std.Build) void {
     };
 }
 
-pub fn linkLinux(mod: *std.Build.Module, comptime display_backend: LinuxDisplayBackend) void {
+var linux_cross_paths_cache: ?struct { include_path: ?std.Build.LazyPath, library_path: ?std.Build.LazyPath } = null;
+
+fn linuxCrossPaths(b: *std.Build) @TypeOf(linux_cross_paths_cache.?) {
+    if (linux_cross_paths_cache == null) {
+        linux_cross_paths_cache = .{
+            .include_path = b.option(std.Build.LazyPath, "system_include_path", "Linux sysroot include path (for cross-compiling to Linux)"),
+            .library_path = b.option(std.Build.LazyPath, "library_path", "Linux sysroot library path (for cross-compiling to Linux)"),
+        };
+    }
+    return linux_cross_paths_cache.?;
+}
+
+pub fn linkLinux(b: *std.Build, mod: *std.Build.Module, comptime display_backend: LinuxDisplayBackend) void {
+    // Cross-compiling to Linux from a non-Linux host: the host's pkg-config (e.g.
+    // Homebrew's on macOS) resolves X11/GL/Wayland to host-arch libs, which then fail
+    // to link against the target. These come from plain absolute -Dsystem_include_path/
+    // -Dlibrary_path options (NOT --sysroot): a global --sysroot also applies to native
+    // host-tool compiles elsewhere in the build graph and breaks those (e.g. "unable to
+    // find libSystem system library"), so headers/libs are supplied directly instead.
+    // b.option is read once (linuxCrossPaths, memoized) since linkLinux can be called
+    // multiple times per build (X11 + Wayland) and b.option panics on re-registration.
+    const cross_linux = builtin.os.tag != .linux;
+    const use_pkg_config: std.Build.Module.SystemLib.UsePkgConfig = if (cross_linux) .no else .yes;
+    if (cross_linux) {
+        const paths = linuxCrossPaths(b);
+        if (paths.include_path) |p| mod.addSystemIncludePath(p);
+        if (paths.library_path) |p| mod.addLibraryPath(p);
+        if (paths.include_path == null or paths.library_path == null) {
+            std.debug.print("error: cross-compiling to Linux requires -Dsystem_include_path and -Dlibrary_path pointing at a Linux sysroot's usr/include and usr/lib (X11/GL/Wayland headers+libs)\n", .{});
+            std.process.exit(1);
+        }
+    }
+
     if (display_backend == .None) {
-        mod.linkSystemLibrary("GL", .{});
+        mod.linkSystemLibrary("GL", .{ .use_pkg_config = use_pkg_config });
     }
 
     if (display_backend == .X11) {
-        mod.linkSystemLibrary("X11", .{});
-        mod.linkSystemLibrary("Xrandr", .{});
-        mod.linkSystemLibrary("Xinerama", .{});
-        mod.linkSystemLibrary("Xi", .{});
-        mod.linkSystemLibrary("Xcursor", .{});
+        mod.linkSystemLibrary("X11", .{ .use_pkg_config = use_pkg_config });
+        mod.linkSystemLibrary("Xrandr", .{ .use_pkg_config = use_pkg_config });
+        mod.linkSystemLibrary("Xinerama", .{ .use_pkg_config = use_pkg_config });
+        mod.linkSystemLibrary("Xi", .{ .use_pkg_config = use_pkg_config });
+        mod.linkSystemLibrary("Xcursor", .{ .use_pkg_config = use_pkg_config });
     }
 
     if (display_backend == .Wayland) {
-        mod.linkSystemLibrary("wayland-client", .{});
-        mod.linkSystemLibrary("wayland-cursor", .{});
-        mod.linkSystemLibrary("wayland-egl", .{});
-        mod.linkSystemLibrary("xkbcommon", .{});
+        mod.linkSystemLibrary("wayland-client", .{ .use_pkg_config = use_pkg_config });
+        mod.linkSystemLibrary("wayland-cursor", .{ .use_pkg_config = use_pkg_config });
+        mod.linkSystemLibrary("wayland-egl", .{ .use_pkg_config = use_pkg_config });
+        mod.linkSystemLibrary("xkbcommon", .{ .use_pkg_config = use_pkg_config });
     }
 }
 
@@ -233,18 +265,18 @@ fn compileRaylib(b: *std.Build, target: std.Build.ResolvedTarget, optimize: std.
                         @panic("Target is not supported with this platform");
                     }
 
-                    linkLinux(raylib_mod, .None);
+                    linkLinux(b, raylib_mod, .None);
 
                     if (options.linux_display_backend == .X11 or options.linux_display_backend == .Both) {
                         raylib_mod.addCMacro("_GLFW_X11", "");
-                        linkLinux(raylib_mod, .X11);
+                        linkLinux(b, raylib_mod, .X11);
                     }
 
                     if (options.linux_display_backend == .Wayland or options.linux_display_backend == .Both) {
                         findWaylandScanner(b);
 
                         raylib_mod.addCMacro("_GLFW_WAYLAND", "");
-                        linkLinux(raylib_mod, .Wayland);
+                        linkLinux(b, raylib_mod, .Wayland);
                         try waylandGenerate(b, raylib, "src/external/glfw/deps/wayland/", false);
                     }
                 },
@@ -294,13 +326,13 @@ fn compileRaylib(b: *std.Build, target: std.Build.ResolvedTarget, optimize: std.
                         @panic("Target is not supported with this platform");
                     }
 
-                    linkLinux(raylib_mod, .None);
+                    linkLinux(b, raylib_mod, .None);
 
                     if (options.linux_display_backend == .X11 or options.linux_display_backend == .Both) {
                         raylib_mod.addCMacro("RGFW_X11", "");
                         raylib_mod.addCMacro("RGFW_UNIX", "");
 
-                        linkLinux(raylib_mod, .X11);
+                        linkLinux(b, raylib_mod, .X11);
                     }
 
                     if (options.linux_display_backend == .Wayland or options.linux_display_backend == .Both) {
@@ -313,7 +345,7 @@ fn compileRaylib(b: *std.Build, target: std.Build.ResolvedTarget, optimize: std.
                         raylib_mod.addCMacro("RGFW_WAYLAND", "");
                         raylib_mod.addCMacro("EGLAPIENTRY", "");
 
-                        linkLinux(raylib_mod, .Wayland);
+                        linkLinux(b, raylib_mod, .Wayland);
 
                         try waylandGenerate(b, raylib, "src/external/RGFW/deps/wayland/", true);
                     }
