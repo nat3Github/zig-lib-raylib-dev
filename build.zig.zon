@@ -25,8 +25,8 @@
         // an `if (target...== .emscripten)` guard, since that's a runtime
         // check the compiler can't prune during build.zig analysis.
         .zemscripten = .{
-            .url = "git+https://github.com/nat3Github/zig-lib-zemscripten-dev-fork#3fa4b778852226c7346bdcc3c1486e875a9a6d02",
-            .hash = "zemscripten-0.2.0-dev-sRlDqApRAACspTbAZnuNKWIzfWzSYgYkb2nWAXZ-tqqt",
+            .url = "git+https://github.com/zig-gamedev/zemscripten#70bdafc473be2131445bb6fd977fe7cb92fd0f5f",
+            .hash = "",
         },
     },
 

@@ -69,7 +69,7 @@ pub const emsdk = struct {
         raylib.root_module.addIncludePath(emsdk_dep.path("upstream/emscripten/cache/sysroot/include"));
         wasm.root_module.addIncludePath(emsdk_dep.path("upstream/emscripten/cache/sysroot/include"));
 
-        const emcc_step = zemscripten.emccStep(b, wasm, options);
+        const emcc_step = zemscripten.emccStep(b, &.{}, &.{wasm}, options);
         emcc_step.dependOn(activate_emsdk_step);
 
         return emcc_step;
