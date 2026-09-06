@@ -6,21 +6,19 @@
     .fingerprint = 0x13035e5cb8bc1ac2, // Changing this has security and trust implications.
 
     .dependencies = .{
-        // local stripped-down fork keeping only src/raygui.h, same fork used
-        // directly by the raylib-ontop example in lib-dvui-lean-deps.
         .raygui = .{
-            .url = "git+https://github.com/nat3Github/zig-lib-raygui-dev-fork#62a3b50b71c271ab1afbf201d168c08dccc5c40c",
-            .hash = "N-V-__8AAIppBAC5cWi-1ZeNAWCL-wnmk1C5Trtdhu1w3NAs",
+            .url = "git+https://github.com/raysan5/raygui#3b2855842ab578a034f827c38cf8f62c042fc983",
+            .hash = "N-V-__8AAHvybwBw1kyBGn0BW_s1RqIpycNjLf_XbE-fpLUF",
             .lazy = true,
         },
-        // stripped down fork of emsdk
         .emsdk = .{
+            // stripped down fork of emsdk
             .url = "git+https://github.com/nat3Github/zig-lib-emsdk-dev-fork#6c3c9883a43419fbfc4be4d099d377c4dc4f95ac",
             .hash = "emsdk-4.0.9-AsAhn3VZAgD1hm4JoUhnXFy52dLjEFXBmYvo2ObTosCR",
             .lazy = true,
         },
         .zemscripten = .{
-            .url = "git+https://github.com/nat3Github/zig-lib-zemscripten-dev-fork#3fa4b778852226c7346bdcc3c1486e875a9a6d02",
+            .url = "git+https://github.com/zig-gamedev/zemscripten#3fa4b778852226c7346bdcc3c1486e875a9a6d02",
             .hash = "zemscripten-0.2.0-dev-sRlDqApRAACspTbAZnuNKWIzfWzSYgYkb2nWAXZ-tqqt",
             .lazy = true,
         },
