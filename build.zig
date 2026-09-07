@@ -127,11 +127,20 @@ pub fn linkBSD(_: *std.Build, mod: *std.Build.Module) void {
 }
 
 pub fn linkMacOS(b: *std.Build, mod: *std.Build.Module) void {
-    // Include xcode_frameworks for cross compilation
-    if (b.lazyDependency("xcode_frameworks", .{})) |dep| {
-        mod.addSystemFrameworkPath(dep.path("Frameworks"));
-        mod.addSystemIncludePath(dep.path("include"));
-        mod.addLibraryPath(dep.path("lib"));
+    // Cross compiling to macOS needs a macOS SDK; pass one with `--sysroot`.
+    // Native macOS builds do not, since clang locates the system SDK itself.
+    // Only the framework and include paths are set here: when `--sysroot` is
+    // given, zig derives `<sysroot>/usr/lib` on its own, and adding it via
+    // `addLibraryPath` produces a doubled `<sysroot><sysroot>/usr/lib`.
+    if (b.sysroot) |sysroot| {
+        mod.addSystemFrameworkPath(.{ .cwd_relative = b.pathJoin(&.{ sysroot, "System/Library/Frameworks" }) });
+        mod.addSystemIncludePath(.{ .cwd_relative = b.pathJoin(&.{ sysroot, "usr/include" }) });
+    } else if (builtin.target.os.tag != .macos) {
+        std.log.err(
+            \\ Cross compiling to macOS requires a macOS SDK.
+            \\ Pass one with `zig build --sysroot /path/to/MacOSX.sdk`.
+        , .{});
+        std.process.exit(1);
     }
 
     mod.linkFramework("Foundation", .{});
