@@ -91,16 +91,6 @@ pub fn linkWindows(mod: *std.Build.Module, opengl: bool, comptime shcore: bool) 
     if (shcore) mod.linkSystemLibrary("shcore", .{});
 }
 
-fn findWaylandScanner(b: *std.Build) void {
-    _ = b.findProgram(&.{"wayland-scanner"}, &.{}) catch {
-        std.log.err(
-            \\ `wayland-scanner` may not be installed on the system.
-            \\ You can switch to X11 in your `build.zig` by changing `Options.linux_display_backend`
-        , .{});
-        @panic("`wayland-scanner` not found");
-    };
-}
-
 var cross_paths_cache: ?struct {
     include_path: ?std.Build.LazyPath,
     framework_path: ?std.Build.LazyPath,
@@ -282,8 +272,6 @@ fn compileRaylib(b: *std.Build, target: std.Build.ResolvedTarget, optimize: std.
                     }
 
                     if (options.linux_display_backend == .Wayland or options.linux_display_backend == .Both) {
-                        findWaylandScanner(b);
-
                         raylib_mod.addCMacro("_GLFW_WAYLAND", "");
                         linkLinux(b, raylib_mod, .Wayland);
                         try waylandGenerate(b, raylib, "src/external/glfw/deps/wayland/", false);
@@ -345,8 +333,6 @@ fn compileRaylib(b: *std.Build, target: std.Build.ResolvedTarget, optimize: std.
                     }
 
                     if (options.linux_display_backend == .Wayland or options.linux_display_backend == .Both) {
-                        findWaylandScanner(b);
-
                         if (options.linux_display_backend != .Both) {
                             raylib_mod.addCMacro("RGFW_NO_X11", "");
                         }
@@ -681,6 +667,15 @@ fn waylandGenerate(
     const dir = try b.build_root.handle.openDir(b.graph.io, waylandDir, .{ .iterate = true });
     defer dir.close(b.graph.io);
 
+    // Built from source for the host so Wayland targets need no system
+    // `wayland-scanner` and cross-compiling from macOS/Windows works.
+    const wayland = b.lazyDependency("wayland", .{
+        .target = b.graph.host,
+        .optimize = .ReleaseSafe,
+        .@"dtd-validation" = false, // skips the libxml2 dep
+    }) orelse return;
+    const scanner = wayland.artifact("wayland-scanner");
+
     var iter = dir.iterate();
     while (try iter.next(b.graph.io)) |entry| {
         if (entry.kind != .file) continue;
@@ -689,14 +684,16 @@ fn waylandGenerate(
         const filename = std.fs.path.stem(entry.name);
 
         const clientHeader = b.fmt("{s}-client-protocol.h", .{filename});
-        const client_step = b.addSystemCommand(&.{ "wayland-scanner", "client-header" });
+        const client_step = b.addRunArtifact(scanner);
+        client_step.addArg("client-header");
         client_step.addFileArg(b.path(protocolDir));
         raylib.root_module.addIncludePath(client_step.addOutputFileArg(clientHeader).dirname());
         raylib.step.dependOn(&client_step.step);
 
         if (comptime source) {
             const privateCode = b.fmt("{s}-client-protocol-code.c", .{filename});
-            const private_step = b.addSystemCommand(&.{ "wayland-scanner", "private-code" });
+            const private_step = b.addRunArtifact(scanner);
+            private_step.addArg("private-code");
             private_step.addFileArg(b.path(protocolDir));
             raylib.root_module.addCSourceFile(.{
                 .file = private_step.addOutputFileArg(privateCode),
@@ -705,7 +702,8 @@ fn waylandGenerate(
             raylib.step.dependOn(&private_step.step);
         } else {
             const privateCodeHeader = b.fmt("{s}-client-protocol-code.h", .{filename});
-            const private_head_step = b.addSystemCommand(&.{ "wayland-scanner", "private-code" });
+            const private_head_step = b.addRunArtifact(scanner);
+            private_head_step.addArg("private-code");
             private_head_step.addFileArg(b.path(protocolDir));
             raylib.root_module.addIncludePath(private_head_step.addOutputFileArg(privateCodeHeader).dirname());
             raylib.step.dependOn(&private_head_step.step);
