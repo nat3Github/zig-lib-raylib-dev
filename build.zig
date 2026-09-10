@@ -101,31 +101,36 @@ fn findWaylandScanner(b: *std.Build) void {
     };
 }
 
-var linux_cross_paths_cache: ?struct { include_path: ?std.Build.LazyPath, library_path: ?std.Build.LazyPath } = null;
+var cross_paths_cache: ?struct {
+    include_path: ?std.Build.LazyPath,
+    framework_path: ?std.Build.LazyPath,
+    library_path: ?std.Build.LazyPath,
+} = null;
 
-fn linuxCrossPaths(b: *std.Build) @TypeOf(linux_cross_paths_cache.?) {
-    if (linux_cross_paths_cache == null) {
-        linux_cross_paths_cache = .{
-            .include_path = b.option(std.Build.LazyPath, "system_include_path", "Linux sysroot include path (for cross-compiling to Linux)"),
-            .library_path = b.option(std.Build.LazyPath, "library_path", "Linux sysroot library path (for cross-compiling to Linux)"),
+/// Cross-compile system paths, passed explicitly rather than via --sysroot or
+/// --search-prefix: both of those are graph-wide, so they also hit native host-tool
+/// steps in the same build graph, and --search-prefix never reaches translate-c.
+/// Memoized because linkLinux can be called more than once per build (X11 + Wayland)
+/// and b.option panics when the same option is registered twice.
+fn crossPaths(b: *std.Build) @TypeOf(cross_paths_cache.?) {
+    if (cross_paths_cache == null) {
+        cross_paths_cache = .{
+            .include_path = b.option(std.Build.LazyPath, "system_include_path", "Target system include path (for cross-compiling)"),
+            .framework_path = b.option(std.Build.LazyPath, "system_framework_path", "Target system framework path (for cross-compiling to macOS)"),
+            .library_path = b.option(std.Build.LazyPath, "library_path", "Target system library path (for cross-compiling)"),
         };
     }
-    return linux_cross_paths_cache.?;
+    return cross_paths_cache.?;
 }
 
 pub fn linkLinux(b: *std.Build, mod: *std.Build.Module, comptime display_backend: LinuxDisplayBackend) void {
     // Cross-compiling to Linux from a non-Linux host: the host's pkg-config (e.g.
     // Homebrew's on macOS) resolves X11/GL/Wayland to host-arch libs, which then fail
-    // to link against the target. These come from plain absolute -Dsystem_include_path/
-    // -Dlibrary_path options (NOT --sysroot): a global --sysroot also applies to native
-    // host-tool compiles elsewhere in the build graph and breaks those (e.g. "unable to
-    // find libSystem system library"), so headers/libs are supplied directly instead.
-    // b.option is read once (linuxCrossPaths, memoized) since linkLinux can be called
-    // multiple times per build (X11 + Wayland) and b.option panics on re-registration.
+    // to link against the target, so headers/libs are supplied directly (see crossPaths).
     const cross_linux = builtin.os.tag != .linux;
     const use_pkg_config: std.Build.Module.SystemLib.UsePkgConfig = if (cross_linux) .no else .yes;
     if (cross_linux) {
-        const paths = linuxCrossPaths(b);
+        const paths = crossPaths(b);
         if (paths.include_path) |p| mod.addSystemIncludePath(p);
         if (paths.library_path) |p| mod.addLibraryPath(p);
         if (paths.include_path == null or paths.library_path == null) {
@@ -159,10 +164,14 @@ pub fn linkBSD(_: *std.Build, mod: *std.Build.Module) void {
 }
 
 pub fn linkMacOS(b: *std.Build, mod: *std.Build.Module) void {
-    if (b.sysroot) |sysroot| {
-        mod.addSystemFrameworkPath(.{ .cwd_relative = b.pathJoin(&.{ sysroot, "System/Library/Frameworks" }) });
-        mod.addSystemIncludePath(.{ .cwd_relative = b.pathJoin(&.{ sysroot, "usr/include" }) });
-        mod.addLibraryPath(.{ .cwd_relative = b.pathJoin(&.{ sysroot, "usr/lib" }) });
+    // Native macOS builds need nothing here: clang locates the system SDK itself.
+    const paths = crossPaths(b);
+    if (paths.include_path) |p| mod.addSystemIncludePath(p);
+    if (paths.framework_path) |p| mod.addSystemFrameworkPath(p);
+    if (paths.library_path) |p| mod.addLibraryPath(p);
+    if (builtin.os.tag != .macos and (paths.include_path == null or paths.framework_path == null or paths.library_path == null)) {
+        std.debug.print("error: cross-compiling to macOS requires -Dsystem_include_path, -Dsystem_framework_path and -Dlibrary_path pointing at a macOS SDK's usr/include, System/Library/Frameworks and usr/lib\n", .{});
+        std.process.exit(1);
     }
     mod.linkFramework("Foundation", .{});
     mod.linkFramework("CoreServices", .{});
