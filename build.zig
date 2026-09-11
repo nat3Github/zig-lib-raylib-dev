@@ -105,8 +105,8 @@ var cross_paths_cache: ?struct {
 fn crossPaths(b: *std.Build) @TypeOf(cross_paths_cache.?) {
     if (cross_paths_cache == null) {
         cross_paths_cache = .{
-            .include_path = b.option(std.Build.LazyPath, "system_include_path", "Target system include path (for cross-compiling)"),
-            .framework_path = b.option(std.Build.LazyPath, "system_framework_path", "Target system framework path (for cross-compiling to macOS)"),
+            .include_path = b.option(std.Build.LazyPath, "include_path", "Target system include path (for cross-compiling)"),
+            .framework_path = b.option(std.Build.LazyPath, "framework_path", "Target system framework path (for cross-compiling to macOS)"),
             .library_path = b.option(std.Build.LazyPath, "library_path", "Target system library path (for cross-compiling)"),
         };
     }
@@ -124,7 +124,7 @@ pub fn linkLinux(b: *std.Build, mod: *std.Build.Module, comptime display_backend
         if (paths.include_path) |p| mod.addSystemIncludePath(p);
         if (paths.library_path) |p| mod.addLibraryPath(p);
         if (paths.include_path == null or paths.library_path == null) {
-            std.debug.print("error: cross-compiling to Linux requires -Dsystem_include_path and -Dlibrary_path pointing at a Linux sysroot's usr/include and usr/lib (X11/GL/Wayland headers+libs)\n", .{});
+            std.debug.print("error: cross-compiling to Linux requires -Dinclude_path and -Dlibrary_path pointing at a Linux sysroot's usr/include and usr/lib (X11/GL/Wayland headers+libs)\n", .{});
             std.process.exit(1);
         }
     }
@@ -160,7 +160,7 @@ pub fn linkMacOS(b: *std.Build, mod: *std.Build.Module) void {
     if (paths.framework_path) |p| mod.addSystemFrameworkPath(p);
     if (paths.library_path) |p| mod.addLibraryPath(p);
     if (builtin.os.tag != .macos and (paths.include_path == null or paths.framework_path == null or paths.library_path == null)) {
-        std.debug.print("error: cross-compiling to macOS requires -Dsystem_include_path, -Dsystem_framework_path and -Dlibrary_path pointing at a macOS SDK's usr/include, System/Library/Frameworks and usr/lib\n", .{});
+        std.debug.print("error: cross-compiling to macOS requires -Dinclude_path, -Dframework_path and -Dlibrary_path pointing at a macOS SDK's usr/include, System/Library/Frameworks and usr/lib\n", .{});
         std.process.exit(1);
     }
     mod.linkFramework("Foundation", .{});
